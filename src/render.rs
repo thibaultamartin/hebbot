@@ -34,7 +34,7 @@ pub struct RenderResult {
     pub videos: Vec<(String, OwnedMxcUri)>,
 }
 
-pub fn render(news_list: Vec<News>, config: Config, editor: &RoomMember) -> RenderResult {
+pub async fn render(news_list: Vec<News>, config: Config, editor: &RoomMember) -> RenderResult {
     let mut render_projects: BTreeMap<String, RenderProject> = BTreeMap::new();
     let mut render_sections: BTreeMap<String, RenderSection> = BTreeMap::new();
 
@@ -249,6 +249,13 @@ pub fn render(news_list: Vec<News>, config: Config, editor: &RoomMember) -> Rend
     rendered = rendered.replace("{{today}}", &today);
     rendered = rendered.replace("{{author}}", &display_name);
 
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "ping-rooms")] {
+            // Add the ping section
+            rendered.push_str(&render_ping_statistics(config).await);
+        }
+    }
+
     RenderResult {
         rendered,
         warnings,
@@ -371,4 +378,91 @@ fn message_link(config: &Config, event_id: &EventId) -> String {
         "<a href=\"https://matrix.to/#/{}/{}\">open message</a>",
         room_id, event_id
     )
+}
+
+#[cfg(feature = "ping-rooms")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct PingJsonResponse {
+    pub disclaimer: String,
+    pub pings: std::collections::BTreeMap<String, PingJsonResponsePong>,
+    pub mean: f32,
+    pub pongservers: std::collections::HashSet<String>,
+}
+
+#[cfg(feature = "ping-rooms")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct PingJsonResponsePong {
+    pub diffs: std::collections::BTreeMap<String, u64>,
+    pub mean: f32,
+    pub median: f32,
+    pub gmean: f32,
+}
+
+#[cfg(feature = "ping-rooms")]
+async fn render_ping_statistics(config: Config) -> String {
+    // Prepare header of the section
+    let mut output =String::from( "## Dept of Ping 🏓
+    
+    Here we reveal, rank, and applaud the homeservers with the lowest ping, as measured by [pingbot](https://github.com/maubot/echo), a [maubot](https://github.com/maubot/maubot) that you can host on your own server.\n\n");
+
+    // Create a HTTP Client
+    static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
+    let client = reqwest::Client::builder()
+        .gzip(true)
+        .user_agent(APP_USER_AGENT)
+        .build()
+        .expect("Failed to create an HTTP Client");
+
+    // Fetch all Ping rooms
+    for room in config.ping_rooms {
+        let url = format!(
+            "https://maubot.xyz/_matrix/maubot/plugin/pingstat/{}/stats.json",
+            room.room_id
+        );
+
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .expect("Ping Statistics HTTP request failed");
+
+        // Skip if there was any non 200 status code
+        if response.status().is_success() {
+            let json = response
+                .json::<PingJsonResponse>()
+                .await
+                .expect("Failed to parse Ping Response");
+
+            // Add the room information
+            let alias = room.room_alias;
+            output.push_str(&format!(
+                "### [{alias}](https://matrix.to/#/${alias})
+                
+                Join [{alias}](https://matrix.to/#/${alias}) to experience the fun live, and to find out how to add YOUR server to the game.
+                
+                
+                |Rank|Hostname|Median MS|
+                |:---:|:---:|:---:|\n",
+            ));
+
+            // Add the servers to the results
+            json.pings
+                .iter()
+                .take(10)
+                .enumerate()
+                .for_each(|(i, (server, statistics))| {
+                    output.push_str(&format!(
+                        "|{}|{}|{}|\n",
+                        i + 1,
+                        server,
+                        statistics.median.round()
+                    ));
+                });
+
+            // Add the extra newline at the end of each room
+            output.push('\n');
+        }
+    }
+
+    output
 }

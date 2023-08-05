@@ -782,7 +782,8 @@ impl Bot {
             let config = self.config.clone();
 
             render::render(news, config, editor)
-        };
+        }
+        .await;
 
         // Upload rendered content as markdown file
         let mut bytes = result.rendered.as_bytes();

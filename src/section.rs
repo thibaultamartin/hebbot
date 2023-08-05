@@ -32,7 +32,8 @@ impl Section {
         )
     }
 }
-
+// The warning is a false positive
+#[allow(clippy::incorrect_partial_ord_impl_on_ord_type)]
 impl PartialOrd for Section {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.order.cmp(&other.order))
