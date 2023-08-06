@@ -465,6 +465,8 @@ Join [{alias}](https://matrix.to/#/${alias}) to experience the fun live, and to 
                     let mut formatted_media = format!("{:.2}", statistics.median);
                     if formatted_media.ends_with(".00") {
                         formatted_media = format!("{}", statistics.median);
+                    } else if formatted_media.ends_with('0') {
+                        formatted_media.pop();
                     }
 
                     output.push_str(&format!("|{}|{}|{}|\n", i + 1, server, formatted_media));
