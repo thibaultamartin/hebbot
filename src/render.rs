@@ -252,7 +252,7 @@ pub async fn render(news_list: Vec<News>, config: Config, editor: &RoomMember) -
     cfg_if::cfg_if! {
         if #[cfg(feature = "ping-rooms")] {
             // Add the ping section
-            rendered.push_str(&render_ping_statistics(config).await);
+            rendered = rendered.replace("{{pings}}", &render_ping_statistics(config).await);
         }
     }
 
