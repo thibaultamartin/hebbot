@@ -384,9 +384,19 @@ fn message_link(config: &Config, event_id: &EventId) -> String {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 struct PingJsonResponse {
     pub disclaimer: String,
-    pub pings: std::collections::BTreeMap<String, PingJsonResponsePong>,
+    pub pings: std::collections::BTreeMap<String, PingJsonResponsePing>,
     pub mean: f32,
-    pub pongservers: std::collections::HashSet<String>,
+    pub pongservers: std::collections::BTreeSet<String>,
+}
+
+#[cfg(feature = "ping-rooms")]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+struct PingJsonResponsePing {
+    pub pings: std::collections::BTreeSet<String>,
+    pub pongs: std::collections::BTreeMap<String, PingJsonResponsePong>,
+    pub mean: f32,
+    pub median: f32,
+    pub gmean: f32,
 }
 
 #[cfg(feature = "ping-rooms")]
@@ -403,7 +413,7 @@ async fn render_ping_statistics(config: Config) -> String {
     // Prepare header of the section
     let mut output =String::from( "## Dept of Ping 🏓
     
-    Here we reveal, rank, and applaud the homeservers with the lowest ping, as measured by [pingbot](https://github.com/maubot/echo), a [maubot](https://github.com/maubot/maubot) that you can host on your own server.\n\n");
+Here we reveal, rank, and applaud the homeservers with the lowest ping, as measured by [pingbot](https://github.com/maubot/echo), a [maubot](https://github.com/maubot/maubot) that you can host on your own server.\n\n");
 
     // Create a HTTP Client
     static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -437,12 +447,12 @@ async fn render_ping_statistics(config: Config) -> String {
             let alias = room.room_alias;
             output.push_str(&format!(
                 "### [{alias}](https://matrix.to/#/${alias})
-                
-                Join [{alias}](https://matrix.to/#/${alias}) to experience the fun live, and to find out how to add YOUR server to the game.
-                
-                
-                |Rank|Hostname|Median MS|
-                |:---:|:---:|:---:|\n",
+
+Join [{alias}](https://matrix.to/#/${alias}) to experience the fun live, and to find out how to add YOUR server to the game.
+
+
+|Rank|Hostname|Median MS|
+|:---:|:---:|:---:|\n",
             ));
 
             // Add the servers to the results
@@ -451,12 +461,13 @@ async fn render_ping_statistics(config: Config) -> String {
                 .take(10)
                 .enumerate()
                 .for_each(|(i, (server, statistics))| {
-                    output.push_str(&format!(
-                        "|{}|{}|{}|\n",
-                        i + 1,
-                        server,
-                        statistics.median.round()
-                    ));
+                    // We round to 2 decimal places but ensure to not show .00 if the value is a whole number
+                    let mut formatted_media = format!("{:.2}", statistics.median);
+                    if formatted_media.ends_with(".00") {
+                        formatted_media = format!("{}", statistics.median);
+                    }
+
+                    output.push_str(&format!("|{}|{}|{}|\n", i + 1, server, formatted_media));
                 });
 
             // Add the extra newline at the end of each room
