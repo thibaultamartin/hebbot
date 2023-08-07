@@ -411,41 +411,40 @@ struct PingJsonResponsePong {
 #[cfg(feature = "ping-rooms")]
 async fn render_ping_statistics(config: Config) -> String {
     // Prepare header of the section
-    let mut output =String::from( "## Dept of Ping 🏓
+    let mut output = String::from( "## Dept of Ping 🏓
     
 Here we reveal, rank, and applaud the homeservers with the lowest ping, as measured by [pingbot](https://github.com/maubot/echo), a [maubot](https://github.com/maubot/maubot) that you can host on your own server.\n\n");
 
     // Create a HTTP Client
     static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
-    let client = reqwest::Client::builder()
+    match reqwest::Client::builder()
         .gzip(true)
         .user_agent(APP_USER_AGENT)
         .build()
-        .expect("Failed to create an HTTP Client");
+    {
+        Err(e) => {
+            error!("Failed to create an HTTP Client: {}", e);
+        }
+        Ok(client) => {
+            // Fetch all Ping rooms
+            for room in config.ping_rooms {
+                let url = format!(
+                    "https://maubot.xyz/_matrix/maubot/plugin/pingstat/{}/stats.json",
+                    room.room_id
+                );
 
-    // Fetch all Ping rooms
-    for room in config.ping_rooms {
-        let url = format!(
-            "https://maubot.xyz/_matrix/maubot/plugin/pingstat/{}/stats.json",
-            room.room_id
-        );
+                match client.get(url).send().await {
+                    Ok(response) => {
+                        // Skip if there was any non 200 status code
+                        if response.status().is_success() {
+                            let json = response
+                                .json::<PingJsonResponse>()
+                                .await
+                                .expect("Failed to parse Ping Response");
 
-        let response = client
-            .get(url)
-            .send()
-            .await
-            .expect("Ping Statistics HTTP request failed");
-
-        // Skip if there was any non 200 status code
-        if response.status().is_success() {
-            let json = response
-                .json::<PingJsonResponse>()
-                .await
-                .expect("Failed to parse Ping Response");
-
-            // Add the room information
-            let alias = room.room_alias;
-            output.push_str(&format!(
+                            // Add the room information
+                            let alias = room.room_alias;
+                            output.push_str(&format!(
                 "### [{alias}](https://matrix.to/#/${alias})
 
 Join [{alias}](https://matrix.to/#/${alias}) to experience the fun live, and to find out how to add YOUR server to the game.
@@ -455,25 +454,35 @@ Join [{alias}](https://matrix.to/#/${alias}) to experience the fun live, and to 
 |:---:|:---:|:---:|\n",
             ));
 
-            // Add the servers to the results
-            json.pings
-                .iter()
-                .take(10)
-                .enumerate()
-                .for_each(|(i, (server, statistics))| {
-                    // We round to 2 decimal places but ensure to not show .00 if the value is a whole number
-                    let mut formatted_media = format!("{:.2}", statistics.median);
-                    if formatted_media.ends_with(".00") {
-                        formatted_media = format!("{}", statistics.median);
-                    } else if formatted_media.ends_with('0') {
-                        formatted_media.pop();
+                            // Add the servers to the results
+                            json.pings.iter().take(10).enumerate().for_each(
+                                |(i, (server, statistics))| {
+                                    // We round to 2 decimal places but ensure to not show .00 if the value is a whole number
+                                    let mut formatted_media = format!("{:.2}", statistics.median);
+                                    if formatted_media.ends_with(".00") {
+                                        formatted_media = format!("{}", statistics.median);
+                                    } else if formatted_media.ends_with('0') {
+                                        formatted_media.pop();
+                                    }
+
+                                    output.push_str(&format!(
+                                        "|{}|{}|{}|\n",
+                                        i + 1,
+                                        server,
+                                        formatted_media
+                                    ));
+                                },
+                            );
+
+                            // Add the extra newline at the end of each room
+                            output.push('\n');
+                        }
                     }
-
-                    output.push_str(&format!("|{}|{}|{}|\n", i + 1, server, formatted_media));
-                });
-
-            // Add the extra newline at the end of each room
-            output.push('\n');
+                    Err(e) => {
+                        error!("Ping Statistics HTTP request failed: {}", e);
+                    }
+                }
+            }
         }
     }
 
