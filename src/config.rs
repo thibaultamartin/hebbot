@@ -21,6 +21,15 @@ pub struct Config {
     pub editors: Vec<OwnedUserId>,
     pub sections: Vec<Section>,
     pub projects: Vec<Project>,
+    #[cfg(feature = "ping-rooms")]
+    pub ping_rooms: Vec<PingRoom>,
+}
+
+#[cfg(feature = "ping-rooms")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PingRoom {
+    pub room_id: String,
+    pub room_alias: String,
 }
 
 pub struct ConfigResult {
