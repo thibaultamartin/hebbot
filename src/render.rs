@@ -455,8 +455,20 @@ Join [{alias}](https://matrix.to/#/${alias}) to experience the fun live, and to 
             ));
 
                             // Add the servers to the results
-                            json.pings.iter().take(10).enumerate().for_each(
-                                |(i, (server, statistics))| {
+                            let mut pings_array: std::vec::Vec<(String, PingJsonResponsePing)> =
+                                json.pings.into_iter().take(10).collect();
+                            pings_array.sort_unstable_by(|ping_a, ping_b| {
+                                ping_a
+                                    .1
+                                    .median
+                                    .partial_cmp(&ping_b.1.median)
+                                    .unwrap_or(std::cmp::Ordering::Equal)
+                            });
+
+                            pings_array
+                                .iter()
+                                .enumerate()
+                                .for_each(|(i, (server, statistics))| {
                                     // We round to 2 decimal places but ensure to not show .00 if the value is a whole number
                                     let mut formatted_media = format!("{:.2}", statistics.median);
                                     if formatted_media.ends_with(".00") {
@@ -471,8 +483,7 @@ Join [{alias}](https://matrix.to/#/${alias}) to experience the fun live, and to 
                                         server,
                                         formatted_media
                                     ));
-                                },
-                            );
+                                });
 
                             // Add the extra newline at the end of each room
                             output.push('\n');
